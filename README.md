@@ -142,7 +142,7 @@ Protocol                2
 
 ---
 
-## 🧠 Concepts Applied
+## Concepts Applied
 
 | Concept | How It Appears |
 |---------|---------------|
@@ -155,7 +155,7 @@ Protocol                2
 
 ---
 
-## 🛠️ Planned Improvements
+## Planned Improvements
 
 - [ ] `--fix` flag for auto-remediation of common findings
 - [ ] JSON output format for SIEM integration
@@ -165,13 +165,13 @@ Protocol                2
 
 ---
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This tool is for **authorized auditing purposes only**. Run it exclusively on systems you own or have explicit permission to audit. The author assumes no responsibility for misuse.
 
 ---
 
-## 📚 References
+## References
 
 - [ISO/IEC 27001:2022 — Information Security Controls](https://www.iso.org/standard/75652.html)
 - [CIS Benchmarks — Linux](https://www.cisecurity.org/cis-benchmarks)
@@ -180,11 +180,11 @@ This tool is for **authorized auditing purposes only**. Run it exclusively on sy
 
 ---
 
-## 👤 Author
+## Author
 
-**[Tu Nombre]**  
-Cloud & Security Operations | ISO 27001 | Linux Administration  
-[LinkedIn](https://linkedin.com/in/tu-perfil) · [GitHub](https://github.com/tu-usuario)
+**Valente Cisneros Gómez**  
+Junior Cybersecurity Engineer | Cloud & Security Operations | ISO 27001 
+[LinkedIn](https://www.linkedin.com/in/valente-cisneros) · [GitHub](https://github.com/ValenteCisneros)
 
 ---
 
