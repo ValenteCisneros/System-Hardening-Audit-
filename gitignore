@@ -1,0 +1,12 @@
+# Generated audit reports (may contain sensitive host info)
+audit_reports/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+*.swp
+*.swo
+.vscode/
+.idea/
