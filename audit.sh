@@ -33,9 +33,9 @@ mkdir -p "$REPORT_DIR"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 log()  { echo -e "$*" | tee -a "$REPORT_FILE"; }
-pass() { ((PASS++)); log "${GREEN}  [PASS]${RESET} $*"; }
-warn() { ((WARN++)); log "${YELLOW}  [WARN]${RESET} $*"; }
-fail() { ((FAIL++)); log "${RED}  [FAIL]${RESET} $*"; }
+pass() { PASS=$((PASS + 1)); log "${GREEN}  [PASS]${RESET} $*"; }
+warn() { WARN=$((WARN + 1)); log "${YELLOW}  [WARN]${RESET} $*"; }
+fail() { FAIL=$((FAIL + 1)); log "${RED}  [FAIL]${RESET} $*"; }
 info() { log "${CYAN}  [INFO]${RESET} $*"; }
 section() {
   log ""
@@ -75,33 +75,33 @@ check_users() {
   section "CHECK 1 · USER & PRIVILEGE AUDIT (ISO 27001 A.9.2)"
 
   # 1.1 — Empty-password accounts
-  info "Searching for empty-password accounts..."
+  info "Scanning for empty-password accounts..."
   local empty_pass
   empty_pass=$(awk -F: '($2 == "" || $2 == "!!" ) && $1 != "root" { print $1 }' /etc/shadow 2>/dev/null || true)
 
   if [[ -z "$empty_pass" ]]; then
-    pass "No empty-password accounts found"
+    pass "No accounts with empty passwords found"
   else
     while IFS= read -r user; do
-      fail "Empty-password account detected: ${BOLD}$user${RESET}"
+      fail "Account with no password detected: ${BOLD}$user${RESET}"
     done <<< "$empty_pass"
   fi
 
   # 1.2 — UID 0 accounts (should ONLY be root)
-  info "Checking UID 0 accounts (root privilege)..."
+  info "Checking for accounts with UID 0 (root privilege)..."
   local uid0_users
   uid0_users=$(awk -F: '$3 == 0 { print $1 }' /etc/passwd)
 
   while IFS= read -r user; do
     if [[ "$user" == "root" ]]; then
-      pass "root is the only UID 0 account"
+      pass "root is the only account with UID 0"
     else
-      fail "Usuario NO-root con UID 0: ${BOLD}$user${RESET} — Viola Least Privilege"
+      fail "Non-root account with UID 0: ${BOLD}$user${RESET} — Violates Least Privilege"
     fi
   done <<< "$uid0_users"
 
   # 1.3 — Sudo group members
-  info "Listando miembros del grupo sudo/wheel..."
+  info "Listing sudo/wheel group members..."
   local sudo_members=""
   if getent group sudo &>/dev/null; then
     sudo_members=$(getent group sudo | cut -d: -f4)
@@ -116,15 +116,15 @@ check_users() {
   fi
 
   # 1.4 — Accounts with login shell that shouldn't have one
-  info "Searching for system accounts with active login shells..."
+  info "Scanning for system accounts with an active login shell..."
   local sys_shell_users
   sys_shell_users=$(awk -F: '$3 < 1000 && $3 != 0 && $7 !~ /(nologin|false|sync)/ { print $1 "  →  shell: " $7 }' /etc/passwd)
 
   if [[ -z "$sys_shell_users" ]]; then
-    pass "Todas las cuentas de sistema tienen shell restringido"
+    pass "All system accounts have a restricted shell"
   else
     while IFS= read -r entry; do
-      warn "Cuenta de sistema con shell de login: ${BOLD}$entry${RESET}"
+      warn "System account with login shell: ${BOLD}$entry${RESET}"
     done <<< "$sys_shell_users"
   fi
 
@@ -153,12 +153,11 @@ check_firewall() {
     ufw_status=$(ufw status | head -1)
     if echo "$ufw_status" | grep -qi "active"; then
       pass "UFW is ACTIVE"
-      # Show rules summary
       local rules_count
       rules_count=$(ufw status numbered 2>/dev/null | grep -c "^\[" || echo "0")
-      info "  Reglas activas: ${rules_count}"
+      info "  Active rules: ${rules_count}"
     else
-      fail "UFW is INACTIVE — Firewall is not enabled"
+      fail "UFW is INACTIVE — Server has no active firewall"
     fi
   fi
 
@@ -169,12 +168,12 @@ check_firewall() {
       local ipt_rules
       ipt_rules=$(iptables -L INPUT --line-numbers 2>/dev/null | grep -c "^[0-9]" || echo "0")
       if [[ "$ipt_rules" -gt 0 ]]; then
-        pass "IPTables has ${ipt_rules} active rules in INPUT chain"
+        pass "IPTables has ${ipt_rules} active rule(s) in INPUT chain"
       else
         fail "IPTables has no rules — Open network policy"
       fi
     else
-      fail "Neither UFW nor IPTables found — No firewall control"
+      fail "Neither UFW nor IPTables found — No firewall control detected"
     fi
   fi
 
@@ -205,14 +204,14 @@ check_firewall() {
         if $risky; then
           fail "HIGH-RISK port listening publicly: :${port_num}"
         else
-          info "Puerto en escucha: :${port_num}"
+          info "Port listening: :${port_num}"
         fi
       fi
     done <<< "$listening_ports"
   fi
 
   if ! $risky_found; then
-    pass "No high-risk ports exposed publicly detected"
+    pass "No high-risk ports detected on public interfaces"
   fi
 }
 
@@ -257,14 +256,14 @@ check_file_permissions() {
 
     # Compare: actual should be <= expected (numerically)
     if [[ "$actual_perm" -le "$expected_perm" ]]; then
-      pass "${file}  →  permisos: ${BOLD}${actual_perm}${RESET}  propietario: ${actual_owner}"
+      pass "${file}  →  perms: ${BOLD}${actual_perm}${RESET}  owner: ${actual_owner}"
     else
-      fail "${file}  →  permisos: ${BOLD}${actual_perm}${RESET} (esperado ≤ ${expected_perm})  propietario: ${actual_owner}"
+      fail "${file}  →  perms: ${BOLD}${actual_perm}${RESET} (expected ≤ ${expected_perm})  owner: ${actual_owner}"
     fi
   done
 
   # 3.2 — World-writable files (critical directories)
-  info "Searching world-writable files in /etc and /usr ..."
+  info "Scanning for world-writable files in /etc and /usr ..."
   local ww_files
   ww_files=$(find /etc /usr -xdev -type f -perm -0002 2>/dev/null | head -20 || true)
 
@@ -277,7 +276,7 @@ check_file_permissions() {
   fi
 
   # 3.3 — SUID/SGID binaries (unexpected)
-  info "Detecting unexpected SUID/SGID binaries..."
+  info "Scanning for unexpected SUID/SGID binaries..."
   local suid_files
   suid_files=$(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f 2>/dev/null | grep -vE "(sudo|su|passwd|newgrp|gpasswd|chsh|chfn|mount|umount|ping|ping6|pkexec|polkit|at|crontab|ssh-agent|Xorg|screen|wall|write|chage|expiry|login|pt_chown|unix_chkpwd)" || true)
 
@@ -286,7 +285,7 @@ check_file_permissions() {
   else
     local count
     count=$(echo "$suid_files" | wc -l)
-    warn "${count} additional SUID/SGID binaries found — Review:"
+    warn "${count} additional SUID/SGID binary(s) found — Review:"
     while IFS= read -r f; do
       warn "  → ${BOLD}$f${RESET}"
     done <<< "$suid_files"
@@ -309,23 +308,23 @@ check_ssh() {
 
   # Helper to read sshd option (handles Include directives naively)
   get_ssh_opt() {
-    grep -i "^${1}" "$sshd_config" 2>/dev/null | awk '{print $2}' | head -1
+    grep -i "^${1}" "$sshd_config" 2>/dev/null | awk '{print $2}' | head -1 || true
   }
 
   # 4.1 Root login
   local root_login
   root_login=$(get_ssh_opt "PermitRootLogin")
   if [[ "${root_login,,}" == "no" || "${root_login,,}" == "prohibit-password" ]]; then
-    pass "PermitRootLogin = ${root_login} — Root SSH disabled"
+    pass "PermitRootLogin = ${root_login} — Root SSH login blocked"
   else
-    fail "PermitRootLogin = ${root_login:-not set} — Recommended 'no' or 'prohibit-password'"
+    fail "PermitRootLogin = ${root_login:-not set} — Recommended: 'no' or 'prohibit-password'"
   fi
 
   # 4.2 Password authentication
   local passwd_auth
   passwd_auth=$(get_ssh_opt "PasswordAuthentication")
   if [[ "${passwd_auth,,}" == "no" ]]; then
-    pass "PasswordAuthentication = no — Public key only"
+    pass "PasswordAuthentication = no — Only public key auth allowed"
   else
     warn "PasswordAuthentication = ${passwd_auth:-yes (default)} — Consider disabling (use keys only)"
   fi
@@ -343,18 +342,18 @@ check_ssh() {
   local protocol
   protocol=$(get_ssh_opt "Protocol")
   if [[ -z "$protocol" || "$protocol" == "2" ]]; then
-    pass "SSH protocol 2 in use (default in modern OpenSSH)"
+    pass "SSH Protocol 2 in use (default in modern OpenSSH)"
   else
-    fail "SSH Protocol = ${protocol} — Only protocol 2 is allowed"
+    fail "SSH Protocol = ${protocol} — Only protocol 2 is permitted"
   fi
 
   # 4.5 Max auth tries
   local max_tries
   max_tries=$(get_ssh_opt "MaxAuthTries")
   if [[ -n "$max_tries" && "$max_tries" -le 4 ]]; then
-    pass "MaxAuthTries = ${max_tries} (≤ 4) — Brute force protection"
+    pass "MaxAuthTries = ${max_tries} (≤ 4) — Brute-force protection enabled"
   else
-    warn "MaxAuthTries = ${max_tries:-6 (default)} — Recommended ≤ 4"
+    warn "MaxAuthTries = ${max_tries:-6 (default)} — Recommended: ≤ 4"
   fi
 }
 
@@ -366,37 +365,37 @@ check_updates() {
   section "CHECK 5 · PATCH MANAGEMENT (ISO 27001 A.12.6)"
 
   if command -v apt &>/dev/null; then
-    info "Checking pending updates (apt)..."
+    info "Checking for pending package updates (apt)..."
     local pending
     pending=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" || echo "0")
     if [[ "$pending" -eq 0 ]]; then
-      pass "System up to date — No pending packages"
+      pass "System is up to date — No pending packages"
     elif [[ "$pending" -le 10 ]]; then
-      warn "${pending} pending package(s) for update"
+      warn "${pending} package(s) pending update"
     else
-      fail "${pending} packages pending — System is not up to date (potential vulnerabilities)"
+      fail "${pending} packages pending — System is out of date (potential vulnerabilities)"
     fi
 
     # Check for security-only updates
     local sec_updates
     sec_updates=$(apt list --upgradable 2>/dev/null | grep -i "security" | wc -l || echo "0")
     if [[ "$sec_updates" -gt 0 ]]; then
-      fail "${sec_updates} security update(s) pending — Apply IMMEDIATELY"
+      fail "${sec_updates} SECURITY update(s) pending — Apply IMMEDIATELY"
     fi
 
   elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
-    info "Checking pending packages (yum/dnf)..."
+    info "Checking for pending packages (yum/dnf)..."
     local pkg_mgr="yum"
     command -v dnf &>/dev/null && pkg_mgr="dnf"
     local pending
     pending=$($pkg_mgr check-update --quiet 2>/dev/null | grep -c "^[a-zA-Z]" || echo "0")
     if [[ "$pending" -eq 0 ]]; then
-      pass "System up to date — No pending packages"
+      pass "System is up to date — No pending packages"
     else
-      warn "${pending} pending package(s) for update"
+      warn "${pending} package(s) pending update"
     fi
   else
-    info "Package manager not recognized — manual verification required"
+    info "Package manager not recognized — Manual verification required"
   fi
 
   # Kernel version check (informational)
@@ -412,16 +411,16 @@ check_logging() {
 
   # auditd
   if systemctl is-active --quiet auditd 2>/dev/null; then
-    pass "auditd is ACTIVE — Event auditing enabled"
+    pass "auditd is ACTIVE — Kernel event logging enabled"
   else
-    warn "auditd is not active — Recommended for kernel event auditing"
+    warn "auditd is not active — Recommended for kernel-level event auditing"
   fi
 
   # rsyslog / syslog
   if systemctl is-active --quiet rsyslog 2>/dev/null || systemctl is-active --quiet syslog 2>/dev/null; then
-    pass "rsyslog/syslog active — System logging enabled"
+    pass "rsyslog/syslog is active — System logging enabled"
   else
-    warn "rsyslog not detected active"
+    warn "rsyslog not detected as active"
   fi
 
   # Log files exist
@@ -429,7 +428,7 @@ check_logging() {
     if [[ -f "$logfile" ]]; then
       local log_size
       log_size=$(du -sh "$logfile" 2>/dev/null | cut -f1)
-      pass "Log found: ${logfile} (${log_size})"
+      pass "Log file found: ${logfile} (${log_size})"
       break
     fi
   done
@@ -441,22 +440,22 @@ check_logging() {
 print_summary() {
   local total=$((PASS + WARN + FAIL))
   local score=0
-  [[ $total -gt 0 ]] && score=$(( (PASS * 100) / total ))
+  if [[ $total -gt 0 ]]; then score=$(( (PASS * 100) / total )); fi
 
   # Risk level
   local risk_level risk_color
-  if   [[ $score -ge 85 ]]; then risk_level="BAJO";   risk_color=$GREEN
-  elif [[ $score -ge 60 ]]; then risk_level="MEDIO";  risk_color=$YELLOW
-  else                            risk_level="ALTO";   risk_color=$RED
+  if   [[ $score -ge 85 ]]; then risk_level="LOW";    risk_color=$GREEN
+  elif [[ $score -ge 60 ]]; then risk_level="MEDIUM"; risk_color=$YELLOW
+  else                            risk_level="HIGH";   risk_color=$RED
   fi
 
   log ""
   log "${BOLD}${CYAN}══════════════════════════════════════════════════════${RESET}"
-  log "${BOLD}  AUDIT REPORT RESUMED${RESET}"
+  log "${BOLD}  AUDIT SUMMARY${RESET}"
   log "${BOLD}${CYAN}══════════════════════════════════════════════════════${RESET}"
-  log "  ${GREEN}[PASS]${RESET}  ${BOLD}${PASS}${RESET} checks passed"
-  log "  ${YELLOW}[WARN]${RESET}  ${BOLD}${WARN}${RESET} warnings (review)"
-  log "  ${RED}[FAIL]${RESET}  ${BOLD}${FAIL}${RESET} checks failed (action required)"
+  log "  ${GREEN}[PASS]${RESET}  ${BOLD}${PASS}${RESET} controls passed"
+  log "  ${YELLOW}[WARN]${RESET}  ${BOLD}${WARN}${RESET} warnings (review recommended)"
+  log "  ${RED}[FAIL]${RESET}  ${BOLD}${FAIL}${RESET} controls failed (action required)"
   log ""
   log "  Compliance Score : ${BOLD}${score}%${RESET}"
   log "  Risk Level       : ${risk_color}${BOLD}${risk_level}${RESET}"
@@ -466,7 +465,7 @@ print_summary() {
   log ""
 
   if [[ $FAIL -gt 0 ]]; then
-    log "${RED}${BOLD}  ⚠  There are ${FAIL} critical failures. Review the report and apply remediation.${RESET}"
+    log "${RED}${BOLD}  ⚠  ${FAIL} critical failure(s) found. Review the report and apply remediations.${RESET}"
     log ""
   fi
 }
