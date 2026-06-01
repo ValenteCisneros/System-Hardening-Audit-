@@ -12,6 +12,9 @@
 
 set -euo pipefail
 
+# Ensure we have a proper PATH for system commands
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
+
 # ─── Colors & Formatting ─────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
