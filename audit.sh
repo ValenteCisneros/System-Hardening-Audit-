@@ -20,9 +20,12 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+BLUE='\033[0;34m'
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
+
+remediate() { log "${BLUE}  [REMEDIATION]${RESET} $*"; }
 
 # ─── Report Setup ─────────────────────────────────────────────────────────────
 REPORT_DIR="./audit_reports"
@@ -87,6 +90,7 @@ check_users() {
   else
     while IFS= read -r user; do
       fail "Account with no password detected: ${BOLD}$user${RESET}"
+      remediate "Lock account: passwd -l $user"
     done <<< "$empty_pass"
   fi
 
@@ -100,6 +104,7 @@ check_users() {
       pass "root is the only account with UID 0"
     else
       fail "Non-root account with UID 0: ${BOLD}$user${RESET} — Violates Least Privilege"
+      remediate "Remove or modify user $user: deluser $user or usermod -u <non-zero-uid> $user"
     fi
   done <<< "$uid0_users"
 
@@ -116,6 +121,7 @@ check_users() {
     pass "No additional users in sudo/wheel group"
   else
     warn "Users with sudo access: ${BOLD}${sudo_members}${RESET} — Review necessity"
+    remediate "Review sudoers file: visudo and remove unnecessary sudo access"
   fi
 
   # 1.4 — Accounts with login shell that shouldn't have one
@@ -128,6 +134,8 @@ check_users() {
   else
     while IFS= read -r entry; do
       warn "System account with login shell: ${BOLD}$entry${RESET}"
+      local user=$(echo "$entry" | awk '{print $1}')
+      remediate "Set nologin shell: usermod -s /usr/sbin/nologin $user"
     done <<< "$sys_shell_users"
   fi
 
@@ -139,6 +147,7 @@ check_users() {
     pass "PASS_MAX_DAYS = ${max_days} days (≤ 90) — Policy compliant"
   else
     warn "PASS_MAX_DAYS = ${max_days:-not set} — Recommended ≤ 90 days (ISO 27001 A.9.4)"
+    remediate "Set PASS_MAX_DAYS to 90 or less: echo 'PASS_MAX_DAYS 90' >> /etc/login.defs"
   fi
 }
 
@@ -161,6 +170,7 @@ check_firewall() {
       info "  Active rules: ${rules_count}"
     else
       fail "UFW is INACTIVE — Server has no active firewall"
+      remediate "Enable UFW: ufw enable"
     fi
   fi
 
@@ -174,9 +184,11 @@ check_firewall() {
         pass "IPTables has ${ipt_rules} active rule(s) in INPUT chain"
       else
         fail "IPTables has no rules — Open network policy"
+        remediate "Add basic iptables rules: iptables -A INPUT -i lo -j ACCEPT && iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT"
       fi
     else
       fail "Neither UFW nor IPTables found — No firewall control detected"
+      remediate "Install UFW: apt install ufw && ufw enable"
     fi
   fi
 
@@ -206,6 +218,7 @@ check_firewall() {
         done
         if $risky; then
           fail "HIGH-RISK port listening publicly: :${port_num}"
+          remediate "Investigate and close unnecessary port $port_num: Check what service is running (ss -tlnp | grep :$port_num) and disable/firewall it"
         else
           info "Port listening: :${port_num}"
         fi
@@ -262,6 +275,15 @@ check_file_permissions() {
       pass "${file}  →  perms: ${BOLD}${actual_perm}${RESET}  owner: ${actual_owner}"
     else
       fail "${file}  →  perms: ${BOLD}${actual_perm}${RESET} (expected ≤ ${expected_perm})  owner: ${actual_owner}"
+      case "$file" in
+        "/etc/shadow") remediate "Restrict shadow file permissions: chmod 640 /etc/shadow" ;;
+        "/etc/passwd") remediate "Set passwd file permissions: chmod 644 /etc/passwd" ;;
+        "/etc/sudoers") remediate "Set sudoers file permissions: chmod 440 /etc/sudoers" ;;
+        "/etc/ssh/sshd_config") remediate "Restrict sshd_config permissions: chmod 600 /etc/ssh/sshd_config" ;;
+        "/etc/crontab") remediate "Set crontab file permissions: chmod 644 /etc/crontab" ;;
+        "/boot/grub/grub.cfg") remediate "Restrict grub.cfg permissions: chmod 600 /boot/grub/grub.cfg" ;;
+        *) remediate "Fix permissions: chmod $expected_perm $file" ;;
+      esac
     fi
   done
 
@@ -275,6 +297,7 @@ check_file_permissions() {
   else
     while IFS= read -r f; do
       fail "World-writable file: ${BOLD}$f${RESET}"
+      remediate "Remove world-writable permission: chmod o-w $f"
     done <<< "$ww_files"
   fi
 
@@ -291,6 +314,7 @@ check_file_permissions() {
     warn "${count} additional SUID/SGID binary(s) found — Review:"
     while IFS= read -r f; do
       warn "  → ${BOLD}$f${RESET}"
+      remediate "Investigate SUID/SGID binary $f: Consider removing the bit with chmod a-s $f if not absolutely necessary"
     done <<< "$suid_files"
   fi
 }
@@ -321,6 +345,7 @@ check_ssh() {
     pass "PermitRootLogin = ${root_login} — Root SSH login blocked"
   else
     fail "PermitRootLogin = ${root_login:-not set} — Recommended: 'no' or 'prohibit-password'"
+    remediate "Set PermitRootLogin to 'no' or 'prohibit-password': echo 'PermitRootLogin no' >> /etc/ssh/sshd_config && systemctl restart sshd"
   fi
 
   # 4.2 Password authentication
@@ -330,6 +355,7 @@ check_ssh() {
     pass "PasswordAuthentication = no — Only public key auth allowed"
   else
     warn "PasswordAuthentication = ${passwd_auth:-yes (default)} — Consider disabling (use keys only)"
+    remediate "Disable password authentication: echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config && systemctl restart sshd"
   fi
 
   # 4.3 Empty passwords
@@ -339,6 +365,7 @@ check_ssh() {
     pass "PermitEmptyPasswords = no (default) — Empty passwords blocked"
   else
     fail "PermitEmptyPasswords = ${empty_pw} — CRITICAL RISK"
+    remediate "Disable empty passwords: echo 'PermitEmptyPasswords no' >> /etc/ssh/sshd_config && systemctl restart sshd"
   fi
 
   # 4.4 Protocol version (legacy check)
@@ -348,6 +375,7 @@ check_ssh() {
     pass "SSH Protocol 2 in use (default in modern OpenSSH)"
   else
     fail "SSH Protocol = ${protocol} — Only protocol 2 is permitted"
+    remediate "Set Protocol to 2: echo 'Protocol 2' >> /etc/ssh/sshd_config && systemctl restart sshd"
   fi
 
   # 4.5 Max auth tries
@@ -357,6 +385,7 @@ check_ssh() {
     pass "MaxAuthTries = ${max_tries} (≤ 4) — Brute-force protection enabled"
   else
     warn "MaxAuthTries = ${max_tries:-6 (default)} — Recommended: ≤ 4"
+    remediate "Set MaxAuthTries to 4 or less: echo 'MaxAuthTries 4' >> /etc/ssh/sshd_config && systemctl restart sshd"
   fi
 }
 
@@ -379,8 +408,10 @@ check_updates() {
       pass "System is up to date — No pending packages"
     elif [[ "$pending" -le 10 ]]; then
       warn "${pending} package(s) pending update"
+      remediate "Apply updates: apt update && apt upgrade -y"
     else
       fail "${pending} packages pending — System is out of date (potential vulnerabilities)"
+      remediate "Apply updates immediately: apt update && apt upgrade -y"
     fi
 
     # Check for security-only updates
@@ -388,6 +419,7 @@ check_updates() {
     sec_updates=$(apt list --upgradable 2>/dev/null | grep -i "security" | wc -l)
     if [[ "$sec_updates" -gt 0 ]]; then
       fail "${sec_updates} SECURITY update(s) pending — Apply IMMEDIATELY"
+      remediate "Apply security updates now: apt update && apt upgrade -y"
     fi
 
   elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
@@ -421,6 +453,7 @@ check_logging() {
     pass "auditd is ACTIVE — Kernel event logging enabled"
   else
     warn "auditd is not active — Recommended for kernel-level event auditing"
+    remediate "Install and enable auditd: apt install auditd && systemctl enable --now auditd"
   fi
 
   # rsyslog / syslog
@@ -428,6 +461,7 @@ check_logging() {
     pass "rsyslog/syslog is active — System logging enabled"
   else
     warn "rsyslog not detected as active"
+    remediate "Install and enable rsyslog: apt install rsyslog && systemctl enable --now rsyslog"
   fi
 
   # Log files exist
@@ -439,6 +473,12 @@ check_logging() {
       break
     fi
   done
+
+  # If no log files were found
+  if [[ ! -f "/var/log/auth.log" && ! -f "/var/log/syslog" && ! -f "/var/log/secure" ]]; then
+    warn "No standard log files found — Check logging configuration"
+    remediate "Ensure rsyslog or syslog is running: systemctl start rsyslog || systemctl start syslog"
+  fi
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
