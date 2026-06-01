@@ -309,9 +309,9 @@ check_ssh() {
     return
   fi
 
-  # Helper to read sshd option (handles Include directives naively)
+  # Helper to read effective sshd option via sshd -T
   get_ssh_opt() {
-    grep -i "^${1}" "$sshd_config" 2>/dev/null | awk '{print $2}' | head -1 || true
+    sshd -T 2>/dev/null | grep -i "^${1}" | awk '{print $2}' | head -1 || true
   }
 
   # 4.1 Root login
