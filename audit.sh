@@ -367,8 +367,12 @@ check_updates() {
   if command -v apt &>/dev/null; then
     info "Checking for pending package updates (apt)..."
     local pending
-    pending=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" || echo "0")
-    if [[ "$pending" -eq 0 ]]; then
+    pending=$(apt list --upgradable 2>/dev/null | tail -n +2 | wc -l)
+    pending=$(echo "$pending" | tr -d '[:space:]')
+    # Validate that the value is numeric
+    if ! [[ "$pending" =~ ^[0-9]+$ ]]; then
+      warn "Could not determine pending package count"
+    elif [[ "$pending" -eq 0 ]]; then
       pass "System is up to date — No pending packages"
     elif [[ "$pending" -le 10 ]]; then
       warn "${pending} package(s) pending update"
@@ -378,7 +382,7 @@ check_updates() {
 
     # Check for security-only updates
     local sec_updates
-    sec_updates=$(apt list --upgradable 2>/dev/null | grep -i "security" | wc -l || echo "0")
+    sec_updates=$(apt list --upgradable 2>/dev/null | grep -i "security" | wc -l)
     if [[ "$sec_updates" -gt 0 ]]; then
       fail "${sec_updates} SECURITY update(s) pending — Apply IMMEDIATELY"
     fi

@@ -1,0 +1,30 @@
+=====================================================
+ System Hardening & Audit Report
+ Host   : Valentes-MacBook-Pro-5.local
+ Kernel : 25.4.0
+ Date   : Fri May  8 17:27:38 CST 2026
+=====================================================
+
+[1m[0;36m══════════════════════════════════════════════════════[0m
+[1m  CHECK 1 · USER & PRIVILEGE AUDIT (ISO 27001 A.9.2)[0m
+[1m[0;36m══════════════════════════════════════════════════════[0m
+[0;36m  [INFO][0m Scanning for empty-password accounts...
+[0;32m  [PASS][0m No accounts with empty passwords found
+[0;36m  [INFO][0m Checking for accounts with UID 0 (root privilege)...
+[0;32m  [PASS][0m root is the only account with UID 0
+[0;36m  [INFO][0m Listing sudo/wheel group members...
+[0;32m  [PASS][0m No additional users in sudo/wheel group
+[0;36m  [INFO][0m Scanning for system accounts with an active login shell...
+[1;33m  [WARN][0m System account with login shell: [1m##  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m# User Database  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m#   →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m# Note that this file is consulted directly only when the system is running  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m# in single-user mode.  At other times this information is provided by  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m# Open Directory.  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m#  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m# See the opendirectoryd(8) man page for additional information about  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m# Open Directory.  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m##  →  shell: [0m
+[1;33m  [WARN][0m System account with login shell: [1m_uucp  →  shell: /usr/sbin/uucico[0m
+[1;33m  [WARN][0m System account with login shell: [1m_mbsetupuser  →  shell: /bin/bash[0m
+[0;36m  [INFO][0m Checking password expiration policy...
